@@ -144,6 +144,21 @@ pc.onLocalCandidate((c, m) => /* 经信令发给对端 */);
 // 对端 setRemoteDescription + addRemoteCandidate 后自动打洞
 ```
 
+### 端到端:手机经打洞控制 dsh web
+
+电脑端运行桥接守护进程,手机经 P2P 直连访问本地 dsh web:
+
+```bash
+# 电脑端(桥接:打洞流量 → 本地 dsh web)
+node clients/dsh-remote/dsh-bridge.mjs ws://<relay> bridge-my-pc
+
+# 手机端(模拟/真实客户端:经打洞发请求)
+node clients/dsh-remote/dsh-phone.mjs bridge-my-pc ws://<relay>
+```
+
+已验证:手机 `GET /` 与 `POST /api/session.list` 经 P2P DataChannel 直达 dsh web,
+返回真实会话数据。帧协议见 `dsh-bridge.mjs` 头部注释。
+
 ### TURN 中继(打洞失败兜底)
 
 手机 4G/5G(CGNAT)打洞常失败,需 TURN 中继。方案见
