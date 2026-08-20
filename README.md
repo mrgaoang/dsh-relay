@@ -124,11 +124,13 @@ setTimeout(()=>process.exit(1),3000);"
 通过信令交换后,向对方公网地址发 UDP 包打通(NAT 打洞),建立 WebRTC
 DataChannel 直连 —— **数据不经过任何服务器**。
 
-### 已验证(见 `docs/`)
+### ✅ 已验证:跨主机 P2P 直连成功
 
-- **Node 20 LTS** + `node-datachannel 0.33`:产生 srflx 候选,仅用 srflx 即可建立 DataChannel(`demo/node20-webrtc-tests/`)
-- 跨主机(家庭 NAT ↔ 云服务器):可达 `iceState: connected`
-- ⚠️ 库稳定性:node-datachannel 重协商有崩溃问题;werift 候选事件需用 `onIceCandidate.subscribe`(详见 `docs/CROSS-HOST-PUNCH-RESULT.md`)
+- **Node 20 LTS** + `node-datachannel 0.33`:跨主机(家庭 NAT ↔ 云服务器)
+  经信令交换后 **`iceState: connected`,DataChannel 建立**,数据不经过服务器
+- 关键:遵循官方模式(不手动 setLocalDescription),见 `docs/PUNCH-BREAKTHROUGH.md`
+  与 `clients/dsh-remote/demo/punch-official.mjs`
+- 手机 4G/5G(CGNAT)打洞常失败,需 TURN 中继(见 `docs/TURN-PLAN.md`)
 
 ### 最小打洞代码
 
