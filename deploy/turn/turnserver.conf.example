@@ -1,0 +1,108 @@
+# ============================================================================
+# dsh-relay TURN 服务器 — coturn 配置示例(商业版中继兜底)
+# ----------------------------------------------------------------------------
+# 用法:
+#   1. 复制本文件为 turnserver.conf,替换所有 <...> 占位符
+#   2. 与同目录 docker-compose.turn.yml 配合:docker compose up -d
+#
+# 本文件不含真实密钥 —— static-auth-secret 请用:
+#   openssl rand -base64 32
+# 生成强随机值,并通过环境变量/密钥管理注入,勿提交到 git。
+# ============================================================================
+
+# ---------- 监听端口 ----------
+# TURN/STUN 主监听端口(UDP+TCP)。WebRTC 客户端默认走这里。
+listening-port=3478
+# TLS/DTLS 监听端口(需证书,见下方 cert/pkey)。安全组/防火墙需放行 5349。
+tls-listening-port=5349
+# 备用端口(STUN CHANGE-REQUEST,用于 NAT 行为探测;默认=3479)
+# alt-listening-port=3479
+
+# ---------- 公网地址映射(关键!) ----------
+# coturn 生成的 relay candidate 必须使用客户端可达的公网地址。
+# - 腾讯云等云主机:服务器内网 IP 与公网 IP 是 1:1 NAT,必须显式指定公网 IP:
+#     external-ip=124.156.222.99
+# - NAS(家庭宽带):填路由器 WAN 公网 IP(动态 IP 需配合 DDNS 域名/IP 更新脚本):
+#     external-ip=<公网IP>
+# 若内网服务器还绑定了内网 IP,可写 "公网IP/内网IP" 映射。
+external-ip=<PUBLIC_IP>
+
+# ---------- 中继端口范围 ----------
+# 每个 TURN 会话分配一个 UDP 中继端口。安全组/防火墙必须放行该范围。
+# 范围越小越好管理,按 max 并发连接数估算(本示例 100 并发)。
+min-port=49160
+max-port=49200
+
+# ---------- 认证:TURN REST API(动态临时凭证) ----------
+# WebRTC 要求长时凭证机制(long-term credential mechanism,RFC 5389)。
+lt-cred-mech
+# TURN REST API 开关:启用基于时间戳 + HMAC-SHA1 的动态凭证,
+# 客户端无需在服务器上预置账号(详见 docs/TURN-PLAN.md 第 4 节)。
+# 注意:use-auth-secret 隐含开启 lt-cred-mech。
+use-auth-secret
+# 静态共享密钥 —— relay 服务用它签发临时凭证,客户端用它派生密码。
+# ⚠️ 敏感!请替换为 openssl rand -base64 32 生成的强随机值,并通过
+#    .env / 密钥管理注入,不要硬编码进 git 仓库。
+static-auth-secret=<REPLACE_WITH_RANDOM_SECRET>
+# REST API 用户名中时间戳与用户 ID 的分隔符(默认 ':'):
+#   username = "<过期Unix时间戳>:<用户ID>"
+# rest-api-separator=:
+
+# ---------- Realm ----------
+# 必须与长时凭证/REST API 配合使用;建议用公司域名,便于将来多 realm 扩展。
+realm=<YOUR_DOMAIN_OR_REALM>
+
+# ---------- 消息指纹 ----------
+# RFC 5389 Fingerprint 属性:防伪造/校验消息完整性,建议开启。
+fingerprint
+
+# ---------- 配额与限速(商业版核心:Pro 2Mbps / 50GB 每月) ----------
+# total-quota:全局并发 TURN 分配(会话)上限,防整机被打满。
+total-quota=100
+# user-quota:单个用户(REST 凭证 userid 部分)并发分配上限。
+user-quota=5
+# max-bps:单会话带宽上限,**单位 bytes/s**(输入/输出分别计)。
+#   2Mbps = 2,000,000 bit/s ÷ 8 = 250,000 bytes/s
+#   1Gbps 带宽服务器建议 1000000(8Mbps)起步,按套餐调整。
+max-bps=250000
+# bps-capacity:整机带宽上限(所有会话合计,bytes/s),可选。
+# bps-capacity=100000000
+
+# ---------- 日志 ----------
+# Docker 场景输出到 stdout,便于 docker logs 采集。
+log-file=stdout
+# 详细日志(排障时开;生产建议 info 或 off)
+# verbose
+# 关闭按 IP 打日志标签等冗余项
+# no-stamp-timestamps
+
+# ---------- 安全加固 ----------
+# 关闭管理 CLI 端口(5766),避免未授权访问。
+no-cli
+# 禁止中继到组播地址(防滥用)。
+no-multicast-peers
+# 禁止中继到回环地址(127.x)。
+# allow-loopback-peers 默认关闭,无需配置。
+# 可选:仅允许内网/指定网段作为 peer(按需放开):
+# allowed-peer-ip=10.0.0.0/8
+# allowed-peer-ip=192.168.0.0/16
+# denied-peer-ip=0.0.0.0-255.255.255.255   # 配合上面的 allow 使用
+
+# ---------- TLS/DTLS(可选,5349) ----------
+# 生产建议开启 TURNS(turns:host:5349?transport=tcp),证书用 Let's Encrypt。
+# Docker 中挂载证书文件到容器内路径,例如:
+#   /etc/letsencrypt/live/<domain>/fullchain.pem -> /etc/coturn/turn_server_cert.pem
+# cert=/etc/coturn/turn_server_cert.pem
+# pkey=/etc/coturn/turn_server_pkey.pem
+# TLS 最低版本(可选):
+# no-tlsv1
+# no-tlsv1_1
+
+# ---------- 监控(50GB/月 用量统计依赖此节) ----------
+# 启用 Prometheus 指标端点(默认 9641/metrics),relay-enterprise 定期抓取,
+# 按 username 标签累计每月流量,超配额即吊销/拒绝签发新凭证。
+# 需镜像编译带 prometheus 支持(官方 coturn/coturn 镜像已包含)。
+# prometheus
+# prometheus-username-labels
+# prometheus-port=9641
+# prometheus-address=0.0.0.0

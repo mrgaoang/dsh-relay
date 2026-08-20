@@ -1,0 +1,8 @@
+{
+  "name": "@dsh-relay/protocol",
+  "version": "0.0.1",
+  "description": "dsh-relay signaling protocol definitions",
+  "type": "module",
+  "main": "src/messages.js",
+  "license": "PolyForm-Noncommercial-1.0.0"
+}

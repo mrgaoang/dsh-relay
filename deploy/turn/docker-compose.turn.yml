@@ -1,0 +1,73 @@
+# ============================================================================
+# dsh-relay TURN 中继 — coturn Docker Compose(商业版兜底组件)
+# ----------------------------------------------------------------------------
+# 前置:
+#   1. 本目录下准备好 turnserver.conf(由 turnserver.conf.example 复制并填好
+#      占位符:external-ip / static-auth-secret / realm 等)
+#   2. 云服务器:安全组放行 3478/udp+tcp、5349/tcp、49160-49200/udp
+#      NAS:路由器端口转发同上,external-ip 填 WAN 公网 IP
+#
+# 启动:  docker compose -f docker-compose.turn.yml up -d
+# 日志:  docker compose -f docker-compose.turn.yml logs -f coturn
+# 验证:  docker exec dsh-turn turnutils_uclient -T -u <user> -w <pwd> <host>
+# ============================================================================
+
+name: dsh-turn
+
+services:
+  coturn:
+    # 官方镜像:入口为 turnserver,默认读取 /etc/coturn/turnserver.conf
+    image: coturn/coturn:4.6
+    container_name: dsh-turn
+    restart: unless-stopped
+
+    # bridge 网络 + 显式端口映射(跨平台通用;Windows/Mac Docker 亦可用)
+    ports:
+      - "3478:3478/udp"            # TURN/STUN UDP
+      - "3478:3478/tcp"            # TURN over TCP
+      - "5349:5349/tcp"            # TURNS(TLS,需配置证书;未配证书可注释)
+      - "49160-49200:49160-49200/udp"  # 中继端口范围(与 turnserver.conf 一致)
+
+    volumes:
+      # 只读挂载配置;文件不存在时容器启动失败(便于提前发现配置错误)
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+
+    environment:
+      # 让镜像内 detect-external-ip 自动探测并附加 --external-ip。
+      # 仅当服务器能自动获得公网 IP 时有效;云主机 1:1 NAT 场景请在
+      # turnserver.conf 里显式写 external-ip,此处保持注释。
+      # - DETECT_EXTERNAL_IP=yes
+      # - DETECT_RELAY_IP=yes
+      TZ: Asia/Shanghai
+
+    # 单进程容器,无需健康检查脚本;直接探测 UDP 端口即可
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lun | grep -q ':3478 '"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ---------------------------------------------------------------------------
+# 备选:host 网络模式(Linux 服务器/NAS 推荐,性能最好、无端口映射开销)
+# 把上面的 ports: 段整体删除,并将 network_mode: host 加在 service 上:
+#
+#   services:
+#     coturn:
+#       image: coturn/coturn:4.6
+#       container_name: dsh-turn
+#       restart: unless-stopped
+#       network_mode: host        # 直接占用宿主 3478/5349/49160-49200
+#       volumes:
+#         - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+#       environment:
+#         TZ: Asia/Shanghai
+#
+# 注意:host 网络下 3478 若与宿主机已有 STUN/其他服务冲突,需改 listening-port。
+# ---------------------------------------------------------------------------

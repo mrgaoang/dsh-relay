@@ -1,0 +1,13 @@
+# 运行时/本地
+node_modules/
+*.log
+*.db
+.env
+data/
+*.local
+
+# 测试临时
+.tmp-webrtc-tests/
+
+# 系统
+.DS_Store
