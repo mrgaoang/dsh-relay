@@ -5,9 +5,8 @@
   "type": "module",
   "private": true,
   "workspaces": [
-    "packages/protocol",
-    "packages/relay-core",
-    "clients/dsh-remote"
+    "packages/*",
+    "clients/*"
   ],
   "scripts": {
     "relay": "node packages/relay-core/src/index.js"
