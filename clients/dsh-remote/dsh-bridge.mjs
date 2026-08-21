@@ -78,8 +78,37 @@ authToken = await resolveToken();
 ws = new WebSocket(RELAY);
 
 // ---- WebRTC(官方模式,answerer:等手机 offer) ----
+// 打洞失败时用 TURN 中继兜底(pro/team 套餐;free 仅 P2P)
+let ICE_SERVERS = [STUN];
+if (authToken) {
+  try {
+    const r = await fetch(API_BASE + "/api/turn-credentials", {
+      headers: { authorization: `Bearer ${authToken}` }
+    });
+    const d = await r.json();
+    if (r.status === 200 && d.enabled && Array.isArray(d.iceServers)) {
+      // relay-enterprise 返回 { urls, username, credential } 分离格式;
+      // node-datachannel 需要 turn:user:pass@host:port 内嵌格式,做转换
+      ICE_SERVERS = [STUN];
+      for (const s of d.iceServers) {
+        for (const u of Array.isArray(s.urls) ? s.urls : [s.urls]) {
+          const m = /^turn:([^?]+)(\?.*)?$/i.exec(u);
+          if (m && s.username && s.credential) {
+            ICE_SERVERS.push(`turn:${encodeURIComponent(s.username)}:${encodeURIComponent(s.credential)}@${m[1]}`);
+          } else if (/^stun:/i.test(u)) {
+            ICE_SERVERS.push(u);
+          }
+        }
+      }
+      console.log("[bridge] 已启用 TURN 中继兜底(pro)");
+    } else {
+      console.log("[bridge] 当前套餐无 TURN(仅 P2P)");
+    }
+  } catch (e) { console.log("[bridge] TURN 配置跳过:", e.message); }
+}
+
 const pc = new dc.PeerConnection(DEVICE_ID, {
-  iceServers: [STUN],
+  iceServers: ICE_SERVERS,
   maxMessageSize: 4 * 1024 * 1024
 });
 

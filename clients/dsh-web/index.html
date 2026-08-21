@@ -336,6 +336,23 @@ function fetchOnlineDevices() {
 }
 
 // ---------- 信令(WebSocket) ----------
+/** 获取 TURN 凭证(pro/team 套餐),用于打洞失败时中继兜底 */
+async function fetchTurnCredentials() {
+  try {
+    const r = await fetch(API_BASE + "/api/turn-credentials", {
+      method: "GET",
+      headers: { authorization: `Bearer ${state.token}` }
+    });
+    const d = await r.json();
+    if (r.status === 200 && d.enabled && Array.isArray(d.iceServers)) {
+      return d.iceServers;
+    }
+    return []; // free 套餐或未启用 → 仅 P2P
+  } catch {
+    return [];
+  }
+}
+
 function openSignal(bridgeId) {
   state.bridgeId = bridgeId;
   const ws = new WebSocket(WS_URL);
@@ -364,10 +381,16 @@ function sendSignal(o) { try { state.ws?.send(JSON.stringify(o)); } catch {} }
 function closeSignal() { try { state.ws?.close(); } catch {} state.ws = null; }
 
 // ---------- WebRTC(offerer,浏览器原生) ----------
-function startP2P() {
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: STUN }] });
+async function startP2P() {
+  // 取 TURN 凭证(pro/team 套餐 → 打洞失败走中继;free → 仅 P2P)
+  const turnServers = await fetchTurnCredentials();
+  const iceServers = [{ urls: STUN }, ...turnServers];
+  $("p2p-label").textContent = turnServers.length > 0
+    ? "P2P 协商中(含 TURN 中继兜底)..."
+    : "P2P 协商中(免费版仅直连)...";
+
+  const pc = new RTCPeerConnection({ iceServers });
   state.pc = pc;
-  $("p2p-label").textContent = "P2P 协商中...";
   $("dot-p2p").classList.remove("on");
 
   const dch = pc.createDataChannel("dsh", { maxRetransmits: 0 });
@@ -393,7 +416,7 @@ function startP2P() {
   pc.oniceconnectionstatechange = () => {
     const s = pc.iceConnectionState;
     if (s === "connected") { $("p2p-label").textContent = `✅ 已连接 ${state.bridgeId}`; $("dot-p2p").classList.add("on"); }
-    if (s === "failed" || s === "disconnected") { $("p2p-label").textContent = "P2P 失败(打洞失败,4G 需 TURN)"; $("dot-p2p").classList.remove("on"); }
+    if (s === "failed" || s === "disconnected") { $("p2p-label").textContent = "连接失败(直连与中继均未建立,请检查设备是否在线)"; $("dot-p2p").classList.remove("on"); }
   };
 
   // offerer:createDataChannel 后自动协商
