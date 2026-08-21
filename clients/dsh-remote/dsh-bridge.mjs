@@ -17,9 +17,12 @@
  * 用法:
  *   node dsh-bridge.mjs [relayUrl] [deviceId]
  * 环境:
- *   DSH_BRIDGE_UPSTREAM  上游 dsh web(默认 http://127.0.0.1:3080)
- *   DSH_BRIDGE_TOKEN     JWT(商业版信令认证;开源版可省略)
- *   DSH_BRIDGE_STUN      STUN 地址(默认 stun.l.google.com:19302)
+ *   DSH_BRIDGE_UPSTREAM   上游 dsh web(默认 http://127.0.0.1:3080)
+ *   DSH_BRIDGE_EMAIL      账号邮箱(与 DSH_BRIDGE_PASSWORD 一起自动登录拿 JWT)
+ *   DSH_BRIDGE_PASSWORD   账号密码
+ *   DSH_BRIDGE_TOKEN      JWT(直接给 token;优先级高于 邮箱+密码)
+ *   DSH_BRIDGE_API        账号 API 地址(默认 https://n.risegao.cn:13443/relay-api)
+ *   DSH_BRIDGE_STUN       STUN 地址(默认 stun:n.risegao.cn:3478)
  */
 
 import * as dc from "node-datachannel";
@@ -28,14 +31,51 @@ import WebSocket from "ws";
 const RELAY = process.argv[2] || "wss://n.risegao.cn:13443/relay-signal";
 const DEVICE_ID = process.argv[3] || `bridge-${Math.random().toString(16).slice(2, 8)}`;
 const UPSTREAM = process.env.DSH_BRIDGE_UPSTREAM || "http://127.0.0.1:3080";
+const API_BASE = (process.env.DSH_BRIDGE_API || "https://n.risegao.cn:13443/relay-api").replace(/\/+$/, "");
+const EMAIL = process.env.DSH_BRIDGE_EMAIL || "";
+const PASSWORD = process.env.DSH_BRIDGE_PASSWORD || "";
 const TOKEN = process.env.DSH_BRIDGE_TOKEN || "";
-const STUN = process.env.DSH_BRIDGE_STUN || "stun:stun.l.google.com:19302";
+const STUN = process.env.DSH_BRIDGE_STUN || "stun:n.risegao.cn:3478";
 
 console.log(`[bridge] 设备 ${DEVICE_ID} → ${RELAY}`);
 console.log(`[bridge] 上游 ${UPSTREAM}`);
 
-const ws = new WebSocket(RELAY);
+// ---- 认证:token 优先,否则 邮箱+密码 自动登录 ----
+async function resolveToken() {
+  if (TOKEN) { console.log("[bridge] 使用 DSH_BRIDGE_TOKEN"); return TOKEN; }
+  if (EMAIL && PASSWORD) {
+    console.log(`[bridge] 用账号 ${EMAIL} 登录换取 JWT...`);
+    try {
+      const r = await fetch(API_BASE + "/api/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: EMAIL, password: PASSWORD })
+      });
+      const d = await r.json();
+      if (r.status === 200 && d.token) {
+        console.log("[bridge] 登录成功,已获取 JWT");
+        return d.token;
+      }
+      console.error(`[bridge] 登录失败(${r.status}): ${d.error?.message || "未知错误"}`);
+      console.error("[bridge] 请检查 DSH_BRIDGE_EMAIL / DSH_BRIDGE_PASSWORD,或直接设 DSH_BRIDGE_TOKEN");
+      process.exit(1);
+    } catch (e) {
+      console.error(`[bridge] 无法连接账号 API ${API_BASE}: ${e.message}`);
+      console.error("[bridge] 开源版(relay-free)可省略认证直接运行");
+      process.exit(1);
+    }
+  }
+  console.log("[bridge] 无认证配置(匿名;仅开源 relay-free 可用)");
+  return "";
+}
+
+// ---- 启动:先认证,再连信令 ----
+let ws;
+let authToken = "";
 const send = (o) => { try { ws.send(JSON.stringify(o)); } catch {} };
+
+authToken = await resolveToken();
+ws = new WebSocket(RELAY);
 
 // ---- WebRTC(官方模式,answerer:等手机 offer) ----
 const pc = new dc.PeerConnection(DEVICE_ID, {
@@ -94,7 +134,7 @@ async function handleRequest(dch, raw) {
 
 // ---- 信令 ----
 ws.on("open", () => {
-  send({ type: "register", deviceId: DEVICE_ID, name: "dsh-bridge", ...(TOKEN ? { token: TOKEN } : {}) });
+  send({ type: "register", deviceId: DEVICE_ID, name: "dsh-bridge", ...(authToken ? { token: authToken } : {}) });
 });
 ws.on("message", (raw) => {
   let m;
