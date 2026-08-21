@@ -39,7 +39,9 @@ DSH_RELAY_EMAIL="你的邮箱" DSH_RELAY_PASSWORD="你的密码" node install-cl
 # 或交互式:node install-client.mjs
 
 # 3. 在电脑上运行桥接守护进程(把本机 dsh web 暴露给手机)
-node clients/dsh-remote/dsh-bridge.mjs   # 默认连商业版信令;可传 <relayUrl> <设备名>
+DSH_BRIDGE_EMAIL="你的账号邮箱" DSH_BRIDGE_PASSWORD="你的密码" \
+  node clients/dsh-remote/dsh-bridge.mjs
+#   ↑ 自动登录换 JWT 并注册信令;也可直接 DSH_BRIDGE_TOKEN=<jwt>
 
 # 4. 手机浏览器打开控制台,用刚注册的账号登录
 #    → https://n.risegao.cn:13443/app/
