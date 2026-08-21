@@ -11,8 +11,8 @@
  * 用法:
  *   node install-client.mjs
  *   环境变量:
- *     DSH_RELAY_API   账号 API 地址(默认 https://n.risegao.cn:13446)
- *     DSH_RELAY_WS    信令地址(默认 wss://n.risegao.cn:13445)
+ *     DSH_RELAY_API   账号 API 地址(默认 https://n.risegao.cn:13443/relay-api)
+ *     DSH_RELAY_WS    信令地址(默认 wss://n.risegao.cn:13443/relay-signal)
  *     DSH_RELAY_STUN  STUN 地址(默认 n.risegao.cn:3478)
  *
  * 安全提示:
@@ -23,8 +23,8 @@
 import WebSocket from "ws";
 import os from "node:os";
 
-const API = process.env.DSH_RELAY_API || "https://n.risegao.cn:13446";
-const WS = process.env.DSH_RELAY_WS || "wss://n.risegao.cn:13445";
+const API = process.env.DSH_RELAY_API || "https://n.risegao.cn:13443/relay-api";
+const WS = process.env.DSH_RELAY_WS || "wss://n.risegao.cn:13443/relay-signal";
 
 // 明文 HTTP/WS 仅允许回环地址(本地测试),防止密码明文走公网
 if (/^http:\/\//i.test(API) && !/^http:\/\/127\.0\.0\.1|^http:\/\/localhost/i.test(API)) {
