@@ -11,6 +11,7 @@
  *   node dsh-phone.mjs <bridgeDeviceId> [relayUrl]
  * 环境:
  *   DSH_RELAY_STUN  STUN 地址
+ *   DSH_PHONE_TOKEN JWT(商业版信令认证;开源版可省略)
  */
 import * as dc from "node-datachannel";
 import WebSocket from "ws";
@@ -18,6 +19,7 @@ import WebSocket from "ws";
 const BRIDGE = process.argv[2] || "bridge-test";
 const RELAY = process.argv[3] || "wss://n.risegao.cn:13443/relay-signal";
 const STUN = process.env.DSH_RELAY_STUN || "stun:stun.l.google.com:19302";
+const TOKEN = process.env.DSH_PHONE_TOKEN || "";
 const DEVICE_ID = "phone-" + BRIDGE.replace("bridge-", "");
 
 console.log(`[phone] ${DEVICE_ID} → bridge ${BRIDGE} @ ${RELAY}`);
@@ -107,6 +109,6 @@ async function runTests() {
   process.exit(0);
 }
 
-ws.on("open", () => send({ type: "register", deviceId: DEVICE_ID, name: "dsh-phone" }));
+ws.on("open", () => send({ type: "register", deviceId: DEVICE_ID, name: "dsh-phone", ...(TOKEN ? { token: TOKEN } : {}) }));
 ws.on("error", (e) => console.log(`[phone] ws error: ${e.message || ""}`));
 setTimeout(() => { console.log("[phone] 超时"); process.exit(1); }, 30000);

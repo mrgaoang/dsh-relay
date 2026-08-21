@@ -259,26 +259,79 @@ function logout() {
 async function refreshDevices() {
   const list = $("device-list");
   list.innerHTML = '<div class="empty">加载中...</div>';
+  $("signal-label").textContent = "查询在线设备...";
+  $("dot-signal").classList.remove("on");
+
+  // ① 先连信令,拿【真实在线】设备(registry 实时状态)
+  const online = await fetchOnlineDevices();
+  // ② 再拉账号设备表(参考)
   const res = await api("/api/devices", null, "GET");
-  if (res.status !== 200) { list.innerHTML = `<div class="empty err">获取设备失败:${esc(res.data?.error?.message || res.status)}</div>`; return; }
-  const devices = res.data.devices || [];
-  if (devices.length === 0) {
-    list.innerHTML = `<div class="empty">暂无设备。<br>请在电脑上运行 dsh-bridge 并注册,然后刷新。</div>`;
+  const bound = (res.status === 200 && res.data.devices) ? res.data.devices : [];
+
+  if (online.length === 0 && bound.length === 0) {
+    list.innerHTML = `<div class="empty">暂无设备。<br>请在电脑上运行 dsh-bridge 并保持运行,然后点"刷新"。</div>`;
     return;
   }
+
   list.innerHTML = "";
-  devices.forEach(d => {
+  // 在线设备(可连接)
+  online.forEach(d => {
     const el = document.createElement("div");
     el.className = "device";
+    el.innerHTML = `
+      <div class="icon">🟢</div>
+      <div>
+        <div class="name">${esc(d.name || d.deviceId)}</div>
+        <div class="meta">${esc(d.deviceId)}</div>
+      </div>
+      <div class="status on">在线</div>`;
+    el.onclick = () => connectToDevice(d.deviceId);
+    list.appendChild(el);
+  });
+  // 已绑定但不在线的设备(参考)
+  bound.forEach(d => {
+    const isOnline = online.some(o => o.deviceId === d.id);
+    if (isOnline) return;
+    const el = document.createElement("div");
+    el.className = "device";
+    el.style.opacity = ".55";
     el.innerHTML = `
       <div class="icon">💻</div>
       <div>
         <div class="name">${esc(d.device_name || d.id)}</div>
         <div class="meta">${esc(d.id)}</div>
       </div>
-      <div class="status ${d.online ? "on" : "off"}">${d.online ? "在线" : "离线"}</div>`;
-    el.onclick = () => { if (d.online) connectToDevice(d.id); else toast("设备离线"); };
+      <div class="status off">离线</div>`;
+    el.onclick = () => toast("该设备离线。请在电脑上运行 dsh-bridge 后刷新。");
     list.appendChild(el);
+  });
+  if (online.length > 0) $("signal-label").textContent = `信令已连接,${online.length} 台在线`;
+}
+
+/** 连信令 → list_devices → 返回在线设备数组(断开信令) */
+function fetchOnlineDevices() {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(WS_URL);
+    const t = setTimeout(() => { try { ws.close(); } catch {} resolve([]); }, 6000);
+    ws.onopen = () => ws.send(JSON.stringify({ type: "register", deviceId: `probe-${Date.now()}`, token: state.token, name: "dsh-web-probe" }));
+    ws.onmessage = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.type === "welcome") {
+        ws.send(JSON.stringify({ type: "list_devices", token: state.token }));
+      }
+      if (m.type === "devices") {
+        clearTimeout(t);
+        const online = (m.devices || []).filter(d => d.online);
+        try { ws.close(); } catch {}
+        resolve(online);
+      }
+      if (m.type === "error") {
+        clearTimeout(t);
+        try { ws.close(); } catch {}
+        resolve([]);
+      }
+    };
+    ws.onerror = () => { clearTimeout(t); resolve([]); };
   });
 }
 
