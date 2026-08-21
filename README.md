@@ -54,8 +54,8 @@ DSH_RELAY_EMAIL="你的邮箱" DSH_RELAY_PASSWORD="你的密码" node install-cl
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `DSH_RELAY_API` | `https://n.risegao.cn:13446` | 账号 API(注册/登录/设备) |
-| `DSH_RELAY_WS` | `wss://n.risegao.cn:13445` | 信令 WebSocket |
+| `DSH_RELAY_API` | `https://n.risegao.cn:13443/relay-api` | 账号 API(注册/登录/设备) |
+| `DSH_RELAY_WS` | `wss://n.risegao.cn:13443/relay-signal` | 信令 WebSocket |
 | `DSH_RELAY_STUN` | `n.risegao.cn:3478` | STUN(打洞探测) |
 
 > 默认指向公共商业服务。自建用户把三个地址改成自己的服务即可(见路径①)。
