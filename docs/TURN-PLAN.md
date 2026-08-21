@@ -438,3 +438,89 @@ nc -z -u 124.156.222.99 3478 && echo "udp3478 ok"
 - PRODUCT-PLAN.md(商业模型/配额):`/Users/mac/AIWorkSpace/myFreeWork/PRODUCT-PLAN.md`
 - POCT-REPORT.md(打洞现状):`/Users/mac/AIWorkSpace/myFreeWork/dsh-relay/docs/POCT-REPORT.md`
 - NODE20-PUNCH-RESULT.md(Node 20 打洞验证):`/Users/mac/AIWorkSpace/myFreeWork/dsh-relay/docs/NODE20-PUNCH-RESULT.md`
+
+---
+
+## 12. NAS 生产部署实测(2026-08,fnOS + 光猫 SK-D847N)
+
+### 12.1 环境与端口规划
+
+| 项 | 值 |
+|---|---|
+| 目标机 | fnOS NAS(192.168.1.30),Docker 28.5.2,Docker Compose v2.40.3 |
+| 光猫 | 中国移动 SK-D847N(192.168.1.1,无 UPnP IGD,端口转发需管理页手工配) |
+| 公网 | 动态 IP(实测 223.72.119.64),DDNS 域名 n.risegao.cn |
+| NAS 已有 | relay-core STUN 占用 **3478/udp** → coturn 改听 **3479** |
+| coturn 监听 | `3479/udp+tcp` + 中继池 `34810-34829/udp` |
+| 光猫端口转发 | `3479/udp+tcp`、`34810-34829/udp` → 192.168.1.30 |
+
+### 12.2 NAS 特有配置要点
+
+```ini
+listening-port=3479          # 避开 relay-core STUN 3478
+listening-ip=192.168.1.30    # 只绑物理网卡,避免绑 docker 网桥 172.x
+relay-ip=192.168.1.30
+external-ip=223.72.119.64/192.168.1.30   # 公网IP/内网IP 映射
+min-port=34810               # 中继池缩到 20 端口,方便光猫转发
+max-port=34829
+use-auth-secret
+static-auth-secret=<与 relay-enterprise .env 的 DSH_ENTERPRISE_TURN_SECRET 相同>
+realm=n.risegao.cn
+denied-peer-ip=10.0.0.0-10.255.255.255   # 防 TURN 被当内网探测跳板
+denied-peer-ip=192.168.0.0-192.168.255.255
+# 其余配额项与云端一致(total-quota/user-quota/max-bps)
+```
+
+### 12.3 部署步骤(镜像传输 + 启动)
+
+```bash
+# 1) NAS 无法直连 Docker Hub → 借道腾讯云中转(amd64):
+#    腾讯云: docker pull --platform linux/amd64 coturn/coturn:latest
+#    腾讯云: docker save coturn/coturn:latest -o /tmp/coturn.tar
+#    经 HTTP(nginx 临时目录)或 scp 传到 NAS 后:
+#     NAS:   docker load -i /tmp/coturn.tar
+
+# 2) 配置(挂载 /etc/coturn/turnserver.conf,镜像入口 turnserver)
+mkdir -p /vol2/docker/dsh-turn
+#    turnserver.conf 按 12.2 编写;注意容器以 nobody 运行,
+#    配置文件权限必须 644(chmod 644),否则 "Cannot find config file"。
+
+# 3) host 网络启动(免端口映射开销)
+cat > /vol2/docker/dsh-turn/docker-compose.yml <<'YML'
+services:
+  coturn:
+    image: coturn/coturn:latest
+    container_name: dsh-turn
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+YML
+cd /vol2/docker/dsh-turn && docker compose up -d
+
+# 4) 光猫端口转发(192.168.1.1 管理页 → 应用-高级NAT设置):
+#    3479/udp+tcp、34810-34829/udp → 192.168.1.30(逐条添加)
+```
+
+### 12.4 端到端验证结果 ✅
+
+| # | 验证项 | 方法 | 结果 |
+|---|---|---|---|
+| 1 | coturn 启动 | `docker compose up -d` + `ss -ulnp \| grep 192.168.1.30:3479` | ✅ UDP/TCP 3479 绑定,relay 池初始化 done |
+| 2 | 端口公网可达 | 腾讯云 `nc`/STUN binding 探测 n.risegao.cn:3479 | ✅ TCP 3479 通;UDP 3479 STUN 响应 40B |
+| 3 | REST 凭证签发 | relay-enterprise `GET /api/turn-credentials`(pro 套餐) | ✅ `{enabled:true, plan:pro, quota:{maxBps:250000, monthlyGb:50}}`,username=`<ts>:2`,HMAC 与 coturn use-auth-secret 公式一致 |
+| 4 | TURN Allocate + 数据中继(公网) | 腾讯云 `docker run coturn turnutils_uclient -y -u <ts>:2 -w <pwd> -p 3479 n.risegao.cn` | ✅ **20/20 消息双向、0 丢失、2000B 双向、RTT 60ms**(经公网中继,relayed 端口取自 34810-34829 池) |
+| 5 | 免费套餐拦截 | admin(free)请求 `/api/turn-credentials` | ✅ `{enabled:false, plan:free, message:"当前套餐不含 TURN 中继(仅 P2P)"}` |
+
+### 12.5 注意事项
+
+- **镜像拉取**:NAS 直连 Docker Hub 超时(registry-1.docker.io deadline exceeded),
+  需借道云主机 `docker save`/`load`;fnnas 镜像源不可用(401/错误页)。
+- **容器用户**:coturn 镜像默认 `nobody:nogroup`,配置只读挂载 + 644 权限,
+  否则启动报 "Cannot find config file" 但进程不退出(反复重试 3478 绑定)。
+- **IP 会话**:光猫登录后无 cookie(302 + IP 会话),管理页操作需同 IP 持续;
+  登录加密为 AES-128-CBC(key/iv 固定串),表单需带页面内 `session_token`
+  (`doAddLogic` 中的值,非 logout 那个)。
+- **UDP 丢包**:公网 UDP 偶发丢失属正常,客户端按 STUN 规范重传。
+- **TURNS 未启用**:TLS 证书未配置,`turns:` 与 DTLS 监听关闭(生产可补 Let's Encrypt)。

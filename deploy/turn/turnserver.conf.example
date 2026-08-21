@@ -8,15 +8,30 @@
 # 本文件不含真实密钥 —— static-auth-secret 请用:
 #   openssl rand -base64 32
 # 生成强随机值,并通过环境变量/密钥管理注入,勿提交到 git。
+#
+# 【NAS 家庭宽带部署差异】实测见 docs/TURN-PLAN.md 第 12 节:
+#   - NAS 上若已跑 relay-core 的 STUN(3478),coturn 改听 3479:
+#       listening-port=3479
+#     (relay-enterprise 签发凭证时 DSH_ENTERPRISE_TURN_URL 同步改为
+#      turn:n.risegao.cn:3479?transport=udp)
+#   - 中继池建议缩到 20 个端口(如 34810-34829),方便路由器端口转发;
+#   - 用 listening-ip/relay-ip 只绑物理网卡,避免 coturn 绑到 docker 网桥;
+#   - 路由器(光猫)需手工加端口转发:
+#       3479/udp+tcp、<中继池范围>/udp → NAS 内网 IP
+#     (无 UPnP IGD 的光猫如 SK-D847N,可在管理页「应用-高级NAT设置」逐条添加)
 # ============================================================================
 
 # ---------- 监听端口 ----------
 # TURN/STUN 主监听端口(UDP+TCP)。WebRTC 客户端默认走这里。
+# NAS 与 relay-core STUN(3478)共存时改用 3479。
 listening-port=3478
 # TLS/DTLS 监听端口(需证书,见下方 cert/pkey)。安全组/防火墙需放行 5349。
 tls-listening-port=5349
 # 备用端口(STUN CHANGE-REQUEST,用于 NAT 行为探测;默认=3479)
 # alt-listening-port=3479
+# 只绑定指定网卡(NAS/多网卡主机推荐,避免绑定 docker 网桥 172.x):
+# listening-ip=<内网IP,如 192.168.1.30>
+# relay-ip=<内网IP,如 192.168.1.30>
 
 # ---------- 公网地址映射(关键!) ----------
 # coturn 生成的 relay candidate 必须使用客户端可达的公网地址。
@@ -30,6 +45,8 @@ external-ip=<PUBLIC_IP>
 # ---------- 中继端口范围 ----------
 # 每个 TURN 会话分配一个 UDP 中继端口。安全组/防火墙必须放行该范围。
 # 范围越小越好管理,按 max 并发连接数估算(本示例 100 并发)。
+# NAS 建议缩到 20 个端口(如 34810-34829)以简化路由器端口转发;
+# 云端可放宽(如 49160-49200)。
 min-port=49160
 max-port=49200
 
@@ -87,6 +104,13 @@ no-multicast-peers
 # allowed-peer-ip=10.0.0.0/8
 # allowed-peer-ip=192.168.0.0/16
 # denied-peer-ip=0.0.0.0-255.255.255.255   # 配合上面的 allow 使用
+# 【NAS 推荐】拒绝中继到 RFC1918 内网/保留地址,防止 TURN 被当作内网探测跳板:
+# denied-peer-ip=0.0.0.0-0.255.255.255
+# denied-peer-ip=10.0.0.0-10.255.255.255
+# denied-peer-ip=172.16.0.0-172.31.255.255
+# denied-peer-ip=192.168.0.0-192.168.255.255
+# denied-peer-ip=100.64.0.0-100.127.255.255
+# denied-peer-ip=169.254.0.0-169.254.255.255
 
 # ---------- TLS/DTLS(可选,5349) ----------
 # 生产建议开启 TURNS(turns:host:5349?transport=tcp),证书用 Let's Encrypt。

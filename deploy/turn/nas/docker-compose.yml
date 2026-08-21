@@ -1,0 +1,25 @@
+# ============================================================================
+# dsh-relay TURN 服务器 — NAS 部署 Docker Compose(host 网络)
+# ----------------------------------------------------------------------------
+# 与同目录 turnserver.conf 配合:docker compose up -d
+# host 网络直接占用 NAS 的 3479/udp+tcp 与 34810-34829/udp,无需端口映射;
+# 光猫端口转发:3479/udp+tcp、34810-34829/udp → NAS 内网 IP
+# 镜像:NAS 无法直连 Docker Hub 时借道云主机 docker save/load(见 TURN-PLAN §12.3)
+# ============================================================================
+
+services:
+  coturn:
+    image: coturn/coturn:latest
+    container_name: dsh-turn
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command:
+      - -c
+      - /etc/coturn/turnserver.conf
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
