@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1117" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>dsh-remote · 远程控制</title>
+  <style>
+    :root {
+      --bg: #0d1117; --card: #161b22; --border: #30363d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #2f81f7;
+      --ok: #3fb950; --warn: #d29922; --err: #f85149;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+      display: flex; flex-direction: column;
+    }
+    header {
+      padding: 16px 20px; display: flex; align-items: center; gap: 12px;
+      border-bottom: 1px solid var(--border); background: rgba(22,27,34,.8);
+      position: sticky; top: 0; backdrop-filter: blur(8px); z-index: 10;
+    }
+    header .logo {
+      width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--accent), #6e40c9);
+      display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px;
+    }
+    header h1 { font-size: 17px; font-weight: 600; }
+    header .sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+    header .spacer { flex: 1; }
+    main { flex: 1; padding: 20px; max-width: 640px; width: 100%; margin: 0 auto; }
+
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 20px; margin-bottom: 16px;
+    }
+    .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .card h2 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .card h2 .dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+    label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 6px; }
+    input {
+      width: 100%; padding: 12px 14px; border-radius: 8px; font-size: 15px;
+      background: var(--bg); border: 1px solid var(--border); color: var(--text); outline: none;
+    }
+    input:focus { border-color: var(--accent); }
+    button {
+      width: 100%; padding: 13px; border-radius: 8px; font-size: 15px; font-weight: 600;
+      background: var(--accent); color: #fff; border: none; cursor: pointer; margin-top: 14px;
+    }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.secondary {
+      background: transparent; border: 1px solid var(--border); color: var(--text);
+    }
+    button.danger { background: transparent; border: 1px solid var(--err); color: var(--err); }
+
+    .msg { font-size: 13px; margin-top: 10px; min-height: 18px; }
+    .msg.err { color: var(--err); }
+    .msg.ok { color: var(--ok); }
+
+    .device {
+      display: flex; align-items: center; gap: 12px; padding: 14px;
+      border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px;
+      background: var(--bg); cursor: pointer; transition: border-color .15s;
+    }
+    .device:active { border-color: var(--accent); }
+    .device .icon {
+      width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
+      background: rgba(47,129,247,.12);
+    }
+    .device .name { font-size: 15px; font-weight: 600; }
+    .device .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .device .status { margin-left: auto; font-size: 12px; padding: 3px 10px; border-radius: 20px; }
+    .device .status.on { color: var(--ok); background: rgba(63,185,80,.12); }
+    .device .status.off { color: var(--muted); background: rgba(139,148,158,.12); }
+
+    .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 24px 0; }
+
+    .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+    .toolbar input { flex: 1; }
+    .toolbar button { width: auto; margin-top: 0; padding: 12px 18px; }
+
+    .res {
+      background: #010409; border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 50vh; overflow: auto;
+    }
+    .res .status-line { color: var(--muted); margin-bottom: 8px; }
+    .res .ok { color: var(--ok); }
+    .res .err { color: var(--err); }
+
+    .loading { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 18px; font-size: 13px; z-index: 100; display: none; max-width: 90vw;
+    }
+    .toast.show { display: block; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">DSH</div>
+  <div>
+    <h1>dsh-remote 远程控制</h1>
+    <div class="sub" id="conn-status">未连接</div>
+  </div>
+  <div class="spacer"></div>
+  <button id="btn-logout" class="secondary hidden" style="width:auto;margin:0;padding:8px 14px;font-size:13px;">退出</button>
+</header>
+
+<main>
+  <!-- 登录视图 -->
+  <div id="view-login" class="card">
+    <h2>登录</h2>
+    <label>邮箱</label>
+    <input id="login-email" type="email" placeholder="you@example.com" autocomplete="email" inputmode="email" />
+    <label>密码</label>
+    <input id="login-pass" type="password" placeholder="密码(≥8位)" autocomplete="current-password" />
+    <button id="btn-login">登 录</button>
+    <div class="msg" id="login-msg"></div>
+    <button id="btn-register" class="secondary" style="margin-top:8px;font-size:13px;">没有账号?免费注册</button>
+  </div>
+
+  <!-- 设备列表视图 -->
+  <div id="view-devices" class="hidden">
+    <div class="card">
+      <h2><span class="dot" id="dot-signal"></span><span id="signal-label">信令</span></h2>
+      <div id="device-list"></div>
+      <button id="btn-refresh" class="secondary">刷新设备列表</button>
+    </div>
+  </div>
+
+  <!-- 控制台视图 -->
+  <div id="view-console" class="hidden">
+    <div class="card">
+      <h2><span class="dot" id="dot-p2p"></span><span id="p2p-label">未连接设备</span></h2>
+      <div id="conn-meta" style="font-size:12px;color:var(--muted);margin-bottom:12px;"></div>
+
+      <div class="toolbar">
+        <input id="req-path" value="/api/session.list" placeholder="/api/session.list" />
+        <button id="btn-send">发送</button>
+      </div>
+      <div class="msg" id="req-msg"></div>
+      <div class="res hidden" id="res-box"><div class="status-line" id="res-status"></div><div id="res-body"></div></div>
+    </div>
+
+    <div class="card">
+      <h2>常用操作</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button class="secondary" data-op="sessions">会话列表</button>
+        <button class="secondary" data-op="new-session">新建会话</button>
+        <button class="secondary" data-op="home">控制台首页</button>
+        <button class="secondary" data-op="disconnect">断开连接</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+ * dsh-remote PWA — 手机端远程控制 DeepSeek Harness
+ *
+ * 架构:
+ *   本页面(浏览器)──WSS 信令──▶ relay ──▶ 电脑端 dsh-bridge
+ *   本页面 ◀──DataChannel(WebRTC)──▶ dsh-bridge ──HTTP──▶ dsh web
+ *
+ * 帧协议(DataChannel, JSON):
+ *   → { id, method, path, body }
+ *   ← { id, status, headers, body }
+ * ============================================================ */
+
+// ---------- 配置(与 install-client.mjs 默认一致) ----------
+const API_BASE = (window.DSH_RELAY_API || "https://n.risegao.cn:13443/relay-api").replace(/\/+$/, "");
+const WS_URL = (window.DSH_RELAY_WS || "wss://n.risegao.cn:13443/relay-signal");
+const STUN = (window.DSH_RELAY_STUN || "stun:n.risegao.cn:3478");
+
+const $ = (id) => document.getElementById(id);
+const state = {
+  token: localStorage.getItem("dsh_token") || "",
+  user: JSON.parse(localStorage.getItem("dsh_user") || "null"),
+  ws: null, pc: null, dch: null,
+  bridgeId: null, nextId: 1, pending: new Map()
+};
+
+// ---------- 工具 ----------
+function toast(msg, ms = 2500) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), ms);
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function setView(v) {
+  ["login", "devices", "console"].forEach(n => $(`view-${n}`).classList.toggle("hidden", n !== v));
+}
+function setConn(text, ok) {
+  $("conn-status").textContent = text;
+  $("conn-status").style.color = ok ? "var(--ok)" : "var(--muted)";
+}
+
+// ---------- API(账号) ----------
+async function api(path, body, method = "POST") {
+  const r = await fetch(API_BASE + path, {
+    method,
+    headers: { "content-type": "application/json", ...(state.token ? { authorization: `Bearer ${state.token}` } : {}) },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  return { status: r.status, data: await r.json().catch(() => ({})) };
+}
+
+// ---------- 登录 / 注册 ----------
+async function doLogin(email, password) {
+  const msg = $("login-msg"); msg.className = "msg"; msg.innerHTML = '<span class="loading"></span> 登录中...';
+  const res = await api("/api/login", { email, password });
+  if (res.status === 200) {
+    state.token = res.data.token; state.user = res.data.user;
+    localStorage.setItem("dsh_token", state.token);
+    localStorage.setItem("dsh_user", JSON.stringify(state.user));
+    msg.className = "msg ok"; msg.textContent = "✅ 登录成功";
+    enterApp();
+  } else {
+    msg.className = "msg err";
+    msg.textContent = res.data?.error?.message || `登录失败(${res.status})`;
+  }
+}
+
+async function doRegister(email, password) {
+  const msg = $("login-msg"); msg.className = "msg"; msg.innerHTML = '<span class="loading"></span> 注册中...';
+  const res = await api("/api/register", { email, password });
+  if (res.status === 201) {
+    state.token = res.data.token; state.user = res.data.user;
+    localStorage.setItem("dsh_token", state.token);
+    localStorage.setItem("dsh_user", JSON.stringify(state.user));
+    msg.className = "msg ok"; msg.textContent = "✅ 注册成功,已自动登录";
+    enterApp();
+  } else {
+    msg.className = "msg err";
+    msg.textContent = res.data?.error?.message || `注册失败(${res.status})`;
+  }
+}
+
+function logout() {
+  state.token = ""; state.user = null;
+  localStorage.removeItem("dsh_token"); localStorage.removeItem("dsh_user");
+  closeSignal(); setConn("未连接"); setView("login");
+}
+
+// ---------- 设备列表 ----------
+async function refreshDevices() {
+  const list = $("device-list");
+  list.innerHTML = '<div class="empty">加载中...</div>';
+  const res = await api("/api/devices", null, "GET");
+  if (res.status !== 200) { list.innerHTML = `<div class="empty err">获取设备失败:${esc(res.data?.error?.message || res.status)}</div>`; return; }
+  const devices = res.data.devices || [];
+  if (devices.length === 0) {
+    list.innerHTML = `<div class="empty">暂无设备。<br>请在电脑上运行 dsh-bridge 并注册,然后刷新。</div>`;
+    return;
+  }
+  list.innerHTML = "";
+  devices.forEach(d => {
+    const el = document.createElement("div");
+    el.className = "device";
+    el.innerHTML = `
+      <div class="icon">💻</div>
+      <div>
+        <div class="name">${esc(d.device_name || d.id)}</div>
+        <div class="meta">${esc(d.id)}</div>
+      </div>
+      <div class="status ${d.online ? "on" : "off"}">${d.online ? "在线" : "离线"}</div>`;
+    el.onclick = () => { if (d.online) connectToDevice(d.id); else toast("设备离线"); };
+    list.appendChild(el);
+  });
+}
+
+// ---------- 信令(WebSocket) ----------
+function openSignal(bridgeId) {
+  state.bridgeId = bridgeId;
+  const ws = new WebSocket(WS_URL);
+  state.ws = ws;
+  $("signal-label").textContent = "信令连接中...";
+  $("dot-signal").classList.remove("on");
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: "register", deviceId: `phone-${bridgeId.replace(/^bridge-/, "")}`, token: state.token, name: "dsh-phone-pwa" }));
+  };
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === "welcome") {
+      $("signal-label").textContent = "信令已连接,发起 P2P...";
+      $("dot-signal").classList.add("on");
+      startP2P();
+    }
+    if (m.type === "error") { $("signal-label").textContent = "信令错误: " + (m.message || m.code); }
+    if (m.type === "relay" && m.from === bridgeId) handleRelay(m.payload);
+  };
+  ws.onclose = () => { $("signal-label").textContent = "信令已断开"; $("dot-signal").classList.remove("on"); };
+  ws.onerror = () => { $("signal-label").textContent = "信令连接失败"; };
+}
+
+function sendSignal(o) { try { state.ws?.send(JSON.stringify(o)); } catch {} }
+function closeSignal() { try { state.ws?.close(); } catch {} state.ws = null; }
+
+// ---------- WebRTC(offerer,浏览器原生) ----------
+function startP2P() {
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: STUN }] });
+  state.pc = pc;
+  $("p2p-label").textContent = "P2P 协商中...";
+  $("dot-p2p").classList.remove("on");
+
+  const dch = pc.createDataChannel("dsh", { maxRetransmits: 0 });
+  state.dch = dch;
+  dch.onopen = () => {
+    $("p2p-label").textContent = `✅ 已连接 ${state.bridgeId}`;
+    $("dot-p2p").classList.add("on");
+    toast("P2P 直连建立");
+    $("res-box").classList.add("hidden");
+  };
+  dch.onclose = () => { $("p2p-label").textContent = "连接已断开"; $("dot-p2p").classList.remove("on"); };
+  dch.onmessage = (ev) => {
+    try {
+      const reply = JSON.parse(ev.data);
+      const resolve = state.pending.get(reply.id);
+      if (resolve) { state.pending.delete(reply.id); resolve(reply); }
+    } catch {}
+  };
+
+  pc.onicecandidate = (ev) => {
+    if (ev.candidate) sendSignal({ type: "relay", to: state.bridgeId, payload: { kind: "candidate", data: { candidate: ev.candidate.candidate, mid: ev.candidate.sdpMid } } });
+  };
+  pc.oniceconnectionstatechange = () => {
+    const s = pc.iceConnectionState;
+    if (s === "connected") { $("p2p-label").textContent = `✅ 已连接 ${state.bridgeId}`; $("dot-p2p").classList.add("on"); }
+    if (s === "failed" || s === "disconnected") { $("p2p-label").textContent = "P2P 失败(打洞失败,4G 需 TURN)"; $("dot-p2p").classList.remove("on"); }
+  };
+
+  // offerer:createDataChannel 后自动协商
+  pc.createOffer().then(offer => pc.setLocalDescription(offer))
+    .then(() => sendSignal({ type: "relay", to: state.bridgeId, payload: { kind: "sdp", data: pc.localDescription.sdp, type: "offer" } }))
+    .catch(e => $("p2p-label").textContent = "offer 失败: " + e.message);
+}
+
+function handleRelay(p) {
+  if (!state.pc) return;
+  if (p.kind === "sdp" && p.type === "answer") {
+    state.pc.setRemoteDescription({ type: "answer", sdp: p.data }).catch(e => console.error("setRemote err", e));
+  } else if (p.kind === "candidate") {
+    state.pc.addIceCandidate({ candidate: p.data.candidate, sdpMid: p.data.mid }).catch(() => {});
+  }
+}
+
+// ---------- HTTP over DataChannel ----------
+function httpRequest(method, path, body) {
+  return new Promise((resolve) => {
+    if (!state.dch || state.dch.readyState !== "open") { resolve({ timeout: true, status: 0 }); return; }
+    const id = state.nextId++;
+    state.pending.set(id, resolve);
+    const frame = { id, method, path };
+    if (body !== undefined) frame.body = typeof body === "string" ? body : JSON.stringify(body);
+    try { state.dch.send(JSON.stringify(frame)); } catch (e) { state.pending.delete(id); resolve({ timeout: true }); return; }
+    setTimeout(() => { if (state.pending.has(id)) { state.pending.delete(id); resolve({ timeout: true }); } }, 15000);
+  });
+}
+
+async function doRequest(method, path, body) {
+  const msg = $("req-msg");
+  if (!state.dch || state.dch.readyState !== "open") { msg.className = "msg err"; msg.textContent = "未连接设备,请先选择在线设备"; return; }
+  msg.className = "msg"; msg.innerHTML = '<span class="loading"></span> 请求中...';
+  const res = await httpRequest(method, path, body);
+  const box = $("res-box"), sb = $("res-status"), bb = $("res-body");
+  box.classList.remove("hidden");
+  if (res.timeout) {
+    sb.className = "status-line err"; sb.textContent = "⏱ 超时(15s)";
+    bb.textContent = "无响应。设备可能已离线或打洞失败。";
+    msg.className = "msg err"; msg.textContent = "请求超时";
+    return;
+  }
+  sb.className = "status-line"; sb.textContent = `${method} ${path} → ${res.status}`;
+  const pretty = (() => {
+    try { return JSON.stringify(JSON.parse(res.body), null, 2); } catch { return res.body; }
+  })();
+  bb.textContent = pretty;
+  msg.className = "msg ok"; msg.textContent = `✅ ${res.status}`;
+}
+
+function connectToDevice(bridgeId) {
+  setView("console");
+  $("p2p-label").textContent = "连接中...";
+  $("conn-meta").textContent = `设备: ${bridgeId}`;
+  openSignal(bridgeId);
+}
+
+// ---------- 常用操作 ----------
+const OPS = {
+  "sessions": () => doRequest("POST", "/api/session.list", { type: "client-request", rpcId: crypto.randomUUID(), method: "session.list", payload: {} }),
+  "new-session": () => doRequest("POST", "/api/session.new", { type: "client-request", rpcId: crypto.randomUUID(), method: "session.new", payload: {} }),
+  "home": () => doRequest("GET", "/"),
+  "disconnect": () => { closeSignal(); state.pc?.close(); state.pc = null; setView("devices"); refreshDevices(); }
+};
+
+// ---------- 进入应用 ----------
+function enterApp() {
+  $("btn-logout").classList.remove("hidden");
+  if (state.user) $("conn-status").textContent = state.user.email;
+  setView("devices");
+  refreshDevices();
+}
+
+// ---------- 事件绑定 ----------
+$("btn-login").onclick = () => {
+  const e = $("login-email").value.trim(), p = $("login-pass").value;
+  if (!e || p.length < 8) { $("login-msg").className = "msg err"; $("login-msg").textContent = "请输入邮箱和至少 8 位密码"; return; }
+  doLogin(e, p);
+};
+$("btn-register").onclick = () => {
+  const e = $("login-email").value.trim(), p = $("login-pass").value;
+  if (!e || p.length < 8) { $("login-msg").className = "msg err"; $("login-msg").textContent = "请输入邮箱和至少 8 位密码"; return; }
+  doRegister(e, p);
+};
+$("btn-logout").onclick = logout;
+$("btn-refresh").onclick = refreshDevices;
+$("btn-send").onclick = () => doRequest("POST", $("req-path").value || "/");
+document.querySelectorAll("[data-op]").forEach(b => b.onclick = () => OPS[b.dataset.op]?.());
+$("login-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btn-login").onclick(); });
+
+// ---------- 启动 ----------
+(function init() {
+  if (state.token) { enterApp(); }
+})();
+</script>
+</body>
+</html>

@@ -16,7 +16,7 @@ import * as dc from "node-datachannel";
 import WebSocket from "ws";
 
 const BRIDGE = process.argv[2] || "bridge-test";
-const RELAY = process.argv[3] || "ws://n.risegao.cn:13445";
+const RELAY = process.argv[3] || "wss://n.risegao.cn:13443/relay-signal";
 const STUN = process.env.DSH_RELAY_STUN || "stun:stun.l.google.com:19302";
 const DEVICE_ID = "phone-" + BRIDGE.replace("bridge-", "");
 

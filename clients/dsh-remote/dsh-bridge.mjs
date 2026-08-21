@@ -25,7 +25,7 @@
 import * as dc from "node-datachannel";
 import WebSocket from "ws";
 
-const RELAY = process.argv[2] || "ws://n.risegao.cn:13445";
+const RELAY = process.argv[2] || "wss://n.risegao.cn:13443/relay-signal";
 const DEVICE_ID = process.argv[3] || `bridge-${Math.random().toString(16).slice(2, 8)}`;
 const UPSTREAM = process.env.DSH_BRIDGE_UPSTREAM || "http://127.0.0.1:3080";
 const TOKEN = process.env.DSH_BRIDGE_TOKEN || "";

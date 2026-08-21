@@ -38,7 +38,12 @@ git clone https://github.com/mrgaoang/dsh-relay.git && cd dsh-relay && npm insta
 DSH_RELAY_EMAIL="你的邮箱" DSH_RELAY_PASSWORD="你的密码" node install-client.mjs
 # 或交互式:node install-client.mjs
 
-# 3. 完成!手机浏览器访问 https://n.risegao.cn 即可远程控制
+# 3. 在电脑上运行桥接守护进程(把本机 dsh web 暴露给手机)
+node clients/dsh-remote/dsh-bridge.mjs   # 默认连商业版信令;可传 <relayUrl> <设备名>
+
+# 4. 手机浏览器打开控制台,用刚注册的账号登录
+#    → https://n.risegao.cn:13443/app/
+#    登录后点在线设备 → P2P 直连 → 远程操作 dsh web
 ```
 
 **`install-client.mjs` 做了什么**:
@@ -207,7 +212,8 @@ dsh-relay/
 │   ├── relay-core/       [开源]信令服务 + STUN 服务
 │   └── relay-free/       [开源]免费账号 API + 一键编排(开源闭环)
 ├── clients/
-│   └── dsh-remote/       [开源]客户端:WebRTC 打洞封装 + 测试
+│   ├── dsh-remote/       [开源]电脑端:WebRTC 打洞封装 + dsh-bridge 守护进程
+│   └── dsh-web/          [开源]手机端 PWA 控制台(登录/设备列表/远程操作)
 ├── deploy/turn/          coturn TURN 中继部署(方案)
 ├── demo/                 Node 20 WebRTC 打洞测试
 └── docs/                 测试与方案文档
