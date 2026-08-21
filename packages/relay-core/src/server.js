@@ -26,7 +26,7 @@ const ATTR_MAPPED_ADDRESS = 0x0001;
  * 创建 STUN 服务器(UDP)。
  * 收到 Binding Request 后,把客户端源地址(经 NAT 后的公网地址)作为响应返回。
  */
-export function createStunServer({ port = 3478 } = {}) {
+export function createStunServer({ port = 3478, host = "0.0.0.0" } = {}) {
   const socket = dgram.createSocket("udp4");
 
   socket.on("message", (msg, rinfo) => {
@@ -68,10 +68,10 @@ export function createStunServer({ port = 3478 } = {}) {
 
   return new Promise((resolve, reject) => {
     socket.once("error", reject);
-    socket.bind(port, "0.0.0.0", () => {
+    socket.bind(port, host, () => {
       socket.removeListener("error", reject);
       resolve({
-        port,
+        port: socket.address().port, // 实际绑定端口(port=0 时由内核分配)
         close: () => socket.close()
       });
     });
@@ -133,8 +133,14 @@ export function createDeviceRegistry() {
  * @param {object} opts.registry 设备注册表
  * @param {object} [opts.auth] 可选认证钩子:{ verifyRegister({deviceId, token}) => boolean }
  */
-export async function createSignalingServer({ port = 13445, registry, auth } = {}) {
-  const wss = new WebSocketServer({ port, host: "0.0.0.0" });
+export async function createSignalingServer({ port = 13445, host = "0.0.0.0", registry, auth } = {}) {
+  const wss = new WebSocketServer({ port, host });
+  // 等待监听完成,确保 address() 可用(port=0 时由内核分配实际端口)
+  await new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const actualPort = wss.address().port;
 
   /** 心跳定时清理 */
   const pruneTimer = setInterval(() => registry?.prune(), 30_000);
@@ -277,7 +283,7 @@ export async function createSignalingServer({ port = 13445, registry, auth } = {
   });
 
   return {
-    port,
+    port: actualPort,
     close: () => {
       clearInterval(pruneTimer);
       wss.close();

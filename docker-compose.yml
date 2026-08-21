@@ -1,0 +1,29 @@
+# dsh-relay 开源免费版 — 一键自建(账号 API + 信令 + STUN)
+#
+# 启动:  docker compose up -d
+# 验证:  curl http://127.0.0.1:13446/api/health
+# 注册:  DSH_RELAY_API=http://127.0.0.1:13446 node install-client.mjs
+#
+# 公网部署请在前面加 TLS 反代(nginx/caddy),并把 install-client 指向
+# https/wss 地址(见 README「安全」一节)。
+services:
+  relay-free:
+    build: .
+    image: dsh-relay-free:latest
+    container_name: dsh-relay-free
+    restart: unless-stopped
+    ports:
+      - "13446:13446"        # 账号 REST API
+      - "13445:13445"        # 信令 WebSocket
+      - "3478:3478/udp"      # STUN
+    environment:
+      DSH_FREE_JWT_SECRET: ${DSH_FREE_JWT_SECRET:-please-change-me}
+      DSH_FREE_API_PORT: "13446"
+      DSH_FREE_SIGNAL_PORT: "13445"
+      DSH_FREE_STUN_PORT: "3478"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:13446/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

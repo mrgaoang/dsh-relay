@@ -1,9 +1,12 @@
 {
   "name": "@dsh-relay/core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "dsh-relay core: signaling + STUN, open-source (free tier)",
   "type": "module",
-  "main": "src/index.js",
+  "main": "src/server.js",
+  "exports": {
+    ".": "./src/server.js"
+  },
   "dependencies": {
     "ws": "^8.18.0"
   },

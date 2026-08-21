@@ -1,11 +1,12 @@
 # dsh-relay — 开源信令与 P2P 打洞(DeepSeek Harness 远程控制)
 
 > **在手机浏览器上远程控制你的 DeepSeek Harness**(`dsh web`),即使电脑在 NAT 后面。
-> 本仓库是 **dsh-remote Cloud** 的开源部分:信令、STUN、客户端 SDK。个人/非商业免费。
+> 本仓库是 **dsh-remote Cloud** 的开源部分:信令、STUN、客户端 SDK、免费认证。
+> **个人/非商业免费;一条命令自建完整闭环,或接入公共商业服务。**
 
 ```
 手机浏览器 ──WebRTC──▶ 你的电脑(dsh web)
-     │  P2P 直连(打洞成功) / TURN 中继(商业版)
+     │  P2P 直连(打洞成功) / TURN 中继(商业版兜底)
      ▼
   dsh-relay 信令服务(本仓库,开源)
      └── 交换 SDP/ICE(只信令,不碰数据)
@@ -13,21 +14,31 @@
 
 ---
 
-## 🚀 快速开始:作为"普通用户"接入
+## 两条使用路径
 
-如果你想**用现成的服务**(别人已部署好的 dsh-relay),三步接入:
+| | ① 自建(开源闭环) | ② 接入公共商业服务 |
+|---|---|---|
+| 适合 | 有服务器/NAS,想自己掌控 | 没有服务器,想开箱即用 |
+| 服务端 | 本仓库 `relay-free`(免费) | `n.risegao.cn`(商业版,付费) |
+| 多用户/超管 | ❌ 单用户 | ✅ 多账号 + 套餐 |
+| TURN 兜底 | ❌ 仅 P2P | ✅ pro 含 TURN 中继 |
+| 成本 | 免费(自备服务器) | 订阅制 |
+
+> 免费版(①)打洞失败(如 4G/5G CGNAT)时无法中继;需要 TURN 兜底请用 ② 或自建 coturn(见 `deploy/turn/`)。
+
+---
+
+## 🚀 路径②:接入公共商业服务(无服务器)
 
 ```bash
 # 1. 拉取
-git clone https://github.com/mrgaoang/dsh-relay.git
-cd dsh-relay
-npm install
+git clone https://github.com/mrgaoang/dsh-relay.git && cd dsh-relay && npm install
 
 # 2. 安装客户端(注册账号 + 绑定设备 + 连接信令)
 DSH_RELAY_EMAIL="你的邮箱" DSH_RELAY_PASSWORD="你的密码" node install-client.mjs
 # 或交互式:node install-client.mjs
 
-# 3. 完成!手机浏览器访问服务提供方给的地址,即可远程控制
+# 3. 完成!手机浏览器访问 https://n.risegao.cn 即可远程控制
 ```
 
 **`install-client.mjs` 做了什么**:
@@ -43,52 +54,48 @@ DSH_RELAY_EMAIL="你的邮箱" DSH_RELAY_PASSWORD="你的密码" node install-cl
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `DSH_RELAY_API` | `http://n.risegao.cn:13446` | 账号 API(注册/登录/设备) |
-| `DSH_RELAY_WS` | `ws://n.risegao.cn:13445` | 信令 WebSocket |
+| `DSH_RELAY_API` | `https://n.risegao.cn:13446` | 账号 API(注册/登录/设备) |
+| `DSH_RELAY_WS` | `wss://n.risegao.cn:13445` | 信令 WebSocket |
 | `DSH_RELAY_STUN` | `n.risegao.cn:3478` | STUN(打洞探测) |
 
-> 想用**自己的服务**?把上面三个地址改成你自己部署的 relay 地址即可(见下文)。
+> 默认指向公共商业服务。自建用户把三个地址改成自己的服务即可(见路径①)。
 
 ---
 
-## 🛠 自建服务(把 relay 部署到你自己的服务器)
+## 🛠 路径①:自建完整服务(开源闭环,免费)
 
-### 组件
-
-| 组件 | 端口 | 说明 |
-|---|---|---|
-| `relay-core` 信令服务 | 13445(WS)+ 3478(UDP STUN) | 本仓库,开源 |
-| 账号 API | 13446 | **商业版**(`dsh-relay-enterprise`),或自建单用户认证 |
-
-### 启动信令 + STUN
+### 方式 A: Docker 一键部署(推荐)
 
 ```bash
-# 需要 Node.js ≥ 20(打洞验证基于 20 LTS)
-DSH_RELAY_SIGNAL_PORT=13445 DSH_RELAY_STUN_PORT=3478 \
-  node packages/relay-core/src/index.js
+docker compose up -d
+# 验证:
+curl http://127.0.0.1:13446/api/health   # → {"ok":true,"service":"dsh-relay-free"}
+# 注册接入:
+DSH_RELAY_API=http://127.0.0.1:13446 DSH_RELAY_WS=ws://127.0.0.1:13445 \
+  DSH_RELAY_EMAIL="you@example.com" DSH_RELAY_PASSWORD="your-password" \
+  node install-client.mjs
 ```
 
-验证:
+一条命令起齐 **账号 API + 信令 WebSocket + STUN**,纯开源栈,无需商业版。
+
+### 方式 B: 源码运行(Node ≥ 20)
 
 ```bash
-# STUN 探测
-node -e "
-const dgram=require('dgram');const s=dgram.createSocket('udp4');
-const m=Buffer.alloc(20);m.writeUInt16BE(1,0);m.writeUInt32BE(0x2112a442,4);Buffer.from('abcdefghijkl').copy(m,8);
-s.send(m,3478,'127.0.0.1');
-s.on('message',()=>{console.log('STUN OK');process.exit(0)});
-setTimeout(()=>process.exit(1),3000);"
+npm install
+npm run free          # 账号 API(13446)+ 信令(13445)+ STUN(3478)
 ```
 
-### 公网部署(关键:开放端口)
+### 公网部署
 
 | 端口 | 协议 | 用途 |
 |---|---|---|
-| 13445 | TCP | 信令 WebSocket(客户端连这里) |
+| 13446 | TCP | 账号 REST API |
+| 13445 | TCP | 信令 WebSocket |
 | 3478 | UDP | STUN(打洞探测) |
-| 13446 | TCP | 账号 API(商业版) |
 
-路由器 NAT / 云安全组需放行上述端口(尤其 **UDP**,打洞依赖它)。
+**必须**:前面加 TLS 反代(nginx/caddy),让账号 API 走 `https://`、信令走 `wss://`
+(`install-client` 会拒绝非回环明文传输)。路由器 NAT / 云安全组放行上述端口,
+尤其 **UDP 3478**(打洞依赖)。
 
 ---
 
@@ -97,7 +104,7 @@ setTimeout(()=>process.exit(1),3000);"
 客户端 ↔ 信令服务,JSON over WebSocket:
 
 ```js
-// 注册(可带 JWT 认证,商业版)
+// 注册(可带 JWT 认证)
 { "type": "register", "deviceId": "my-pc", "token": "<jwt>" }
 → { "type": "welcome", "ok": true }
 
@@ -166,24 +173,59 @@ node clients/dsh-remote/dsh-phone.mjs bridge-my-pc ws://<relay>
 
 ---
 
+## ❓ FAQ
+
+**打洞成功率多高?**
+家庭宽带互连(P2P 直连)成功率较高;手机 4G/5G 因运营商 CGNAT 常常失败。
+打洞失败时需要 TURN 中继兜底(商业版 pro 套餐,或自建 coturn)。
+
+**免费版(relay-free)和商业版(relay-enterprise)什么关系?**
+`relay-free` 是本仓库开源的单用户认证 + 编排,能独立闭环;
+`relay-enterprise` 是闭源商业组件(多用户/超管后台/TURN 配额),通过
+`auth.verifyRegister` 钩子与 relay-core 兼容。两者 API 同构,免费版账号
+可平滑迁移到商业版。
+
+**数据安全吗?**
+信令只转发 SDP/ICE(元数据),业务数据经 WebRTC DTLS 端到端加密,relay
+不接触内容。账号密码 scrypt 哈希存储,传输强制 HTTPS/WSS。
+
+**需要什么环境?**
+Node ≥ 20(自建服务);客户端任意 Node 环境。Docker 方式无需装 Node。
+
+**如何参与?**
+见 [`CONTRIBUTING.md`](CONTRIBUTING.md);安全问题见 [`SECURITY.md`](SECURITY.md)。
+
+---
+
 ## 📁 目录结构
 
 ```
 dsh-relay/
-├── install-client.mjs    [新]一键安装:注册账号+绑设备+连信令
+├── install-client.mjs    [开源]一键安装:注册账号+绑设备+连信令
 ├── packages/
 │   ├── protocol/         信令协议定义
-│   └── relay-core/       [开源]信令服务 + STUN 服务
+│   ├── relay-core/       [开源]信令服务 + STUN 服务
+│   └── relay-free/       [开源]免费账号 API + 一键编排(开源闭环)
 ├── clients/
 │   └── dsh-remote/       [开源]客户端:WebRTC 打洞封装 + 测试
-├── demo/                 Node 20 WebRTC 打洞测试
 ├── deploy/turn/          coturn TURN 中继部署(方案)
+├── demo/                 Node 20 WebRTC 打洞测试
 └── docs/                 测试与方案文档
 ```
+
+## 测试
+
+```bash
+npm test        # relay-core + relay-free 全部单元测试
+npm run check   # 语法检查
+```
+
+CI:GitHub Actions(Node 20/22 双版本 + npm audit)。
 
 ## 商业版(闭源)
 
 多用户账号、SaaS 超管后台、TURN 配额在私有仓库 `dsh-relay-enterprise`(需商业授权)。
+个人/非商业用户用本仓库的 `relay-free` 即可。
 
 ## License
 

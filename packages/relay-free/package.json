@@ -1,0 +1,16 @@
+{
+  "name": "relay-free",
+  "version": "0.1.0",
+  "description": "dsh-relay free tier: single-user account API + signaling orchestration (open source)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/"
+  },
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "dependencies": {
+    "@dsh-relay/core": "*",
+    "ws": "^8.18.0"
+  }
+}

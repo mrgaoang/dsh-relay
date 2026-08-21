@@ -14,13 +14,29 @@
  *     DSH_RELAY_API   账号 API 地址(默认 https://n.risegao.cn:13446)
  *     DSH_RELAY_WS    信令地址(默认 wss://n.risegao.cn:13445)
  *     DSH_RELAY_STUN  STUN 地址(默认 n.risegao.cn:3478)
+ *
+ * 安全提示:
+ *   密码通过账号 API 传输。默认使用 HTTPS/WSS;自建服务请务必配 TLS,
+ *   仅在 127.0.0.1 本地测试时可临时用 http:// / ws://。
  */
 
 import WebSocket from "ws";
 import os from "node:os";
 
-const API = process.env.DSH_RELAY_API || "http://n.risegao.cn:13446";
-const WS = process.env.DSH_RELAY_WS || "ws://n.risegao.cn:13445";
+const API = process.env.DSH_RELAY_API || "https://n.risegao.cn:13446";
+const WS = process.env.DSH_RELAY_WS || "wss://n.risegao.cn:13445";
+
+// 明文 HTTP/WS 仅允许回环地址(本地测试),防止密码明文走公网
+if (/^http:\/\//i.test(API) && !/^http:\/\/127\.0\.0\.1|^http:\/\/localhost/i.test(API)) {
+  console.error("❌ 安全警告:账号 API 使用明文 HTTP(非本地回环)。密码将明文传输,已拒绝执行。");
+  console.error("   请使用 HTTPS(公共服务)或仅本地测试时指向 127.0.0.1。");
+  process.exit(1);
+}
+if (/^ws:\/\//i.test(WS) && !/^ws:\/\/127\.0\.0\.1|^ws:\/\/localhost/i.test(WS)) {
+  console.error("❌ 安全警告:信令使用明文 WS(非本地回环)。设备令牌将明文传输,已拒绝执行。");
+  console.error("   请使用 WSS(公共服务)或仅本地测试时指向 127.0.0.1。");
+  process.exit(1);
+}
 
 async function api(path, body, token) {
   const r = await fetch(API + path, {

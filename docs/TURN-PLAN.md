@@ -40,12 +40,12 @@ WebRTC ICE 流程:**host candidate**(本机) → **srflx**(STUN 测出的公网�
 
 ```
 // ICE candidate 行(foundation 组件类型 优先级 地址 端口 类型 ...):
-candidate:842163049 1 udp 1677729535 124.156.222.99 49176 typ relay \
+candidate:842163049 1 udp 1677729535 <RELAY_HOST> 49176 typ relay \
   raddr 10.0.4.6 rport 50123 generation 0
 
 // iceServers 配置(URL 形式):
-turn:124.156.222.99:3478?transport=udp     // 默认 UDP
-turn:124.156.222.99:3478?transport=tcp     // 强制 TCP
+turn:<RELAY_HOST>:3478?transport=udp     // 默认 UDP
+turn:<RELAY_HOST>:3478?transport=tcp     // 强制 TCP
 turns:turn.example.com:5349?transport=tcp  // TURNS(TLS 封装)
 ```
 
@@ -175,7 +175,7 @@ export function issueTurnCredentials(userId, deviceId, ttlSec = 3600) {
 |---|---|---|
 | `listening-port` | `3478` | TURN/STUN 主端口(UDP+TCP),WebRTC 默认目标 |
 | `tls-listening-port` | `5349` | TURNS(TLS)端口,需证书;安全组放行 |
-| `external-ip` | `124.156.222.99` | **公网 IP 映射**。云主机 1:1 NAT / NAS 家庭宽带必须显式配置,否则 relay candidate 是内网地址 |
+| `external-ip` | `<CLOUD_PUBLIC_IP>` | **公网 IP 映射**。云主机 1:1 NAT / NAS 家庭宽带必须显式配置,否则 relay candidate 是内网地址 |
 | `min-port` / `max-port` | `49160` / `49200` | 中继 UDP 端口池,安全组/防火墙需放行 |
 | `lt-cred-mech` | — | 长时凭证机制(WebRTC 必需) |
 | `use-auth-secret` | — | 开启 TURN REST API(隐含 lt-cred-mech) |
@@ -275,8 +275,8 @@ const { iceServers } = await (await fetch("https://relay.example.com/api/turn-cr
 // 2. 组装 iceServers:STUN 在前,TURN 在后
 const pc = new RTCPeerConnection({
   iceServers: [
-    { urls: "stun:124.156.222.99:3478" },
-    ...iceServers, // [{ urls: "turn:124.156.222.99:3478?transport=udp", username, credential }]
+    { urls: "stun:<RELAY_HOST>:3478" },
+    ...iceServers, // [{ urls: "turn:<RELAY_HOST>:3478?transport=udp", username, credential }]
   ],
 });
 
@@ -309,9 +309,9 @@ node-datachannel 支持两种 iceServers 写法,推荐**对象格式**(避免 UR
 // 对象格式(推荐):relayType = "TurnUdp" | "TurnTcp" | "TurnTls"
 const pc = new dc.PeerConnection(`dsh-${deviceId}`, {
   iceServers: [
-    "stun:124.156.222.99:3478",               // STUN 用字符串即可
+    "stun:<RELAY_HOST>:3478",               // STUN 用字符串即可
     {
-      hostname: "124.156.222.99",
+      hostname: "<RELAY_HOST>",
       port: 3478,
       username,                                 // "1787237549:test-user"
       password: credential,                     // base64 HMAC
@@ -324,7 +324,7 @@ const pc = new dc.PeerConnection(`dsh-${deviceId}`, {
 // 字符串格式(底层 libdatachannel 用 RFC 3986 URL 解析,凭证在 userinfo 段):
 //   "turn://<urlencode(user)>:<urlencode(pwd)>@host:3478?transport=udp"
 // ⚠️ REST 用户名含冒号("ts:userid"),必须 URL 编码为 %3A;密码 base64 若含 +/ 也需编码:
-//   `turn://${encodeURIComponent(username)}:${encodeURIComponent(credential)}@124.156.222.99:3478?transport=udp`
+//   `turn://${encodeURIComponent(username)}:${encodeURIComponent(credential)}@<RELAY_HOST>:3478?transport=udp`
 ```
 
 > 说明:node-datachannel 与浏览器 RTCIceServer(`{urls, username, credential}`)格式不同。
@@ -337,8 +337,8 @@ const pc = new dc.PeerConnection(`dsh-${deviceId}`, {
 
 ```js
 const pc = new RTCPeerConnection({ iceServers: [
-  { urls: "stun:124.156.222.99:3478" },
-  { urls: "turn:124.156.222.99:3478?transport=udp", username, credential },
+  { urls: "stun:<RELAY_HOST>:3478" },
+  { urls: "turn:<RELAY_HOST>:3478?transport=udp", username, credential },
 ]});
 // 浏览器原生支持,无需额外库
 ```
@@ -379,13 +379,13 @@ const pc = new RTCPeerConnection({ iceServers: [
 
 ```bash
 # 1) STUN 连通(UDP 3478):任一客户端 stunProbe
-node -e "import('./clients/dsh-remote/src/webrtc.js').then(m=>m.stunProbe('124.156.222.99',3478).then(r=>console.log('STUN OK',r)))"
+node -e "import('./clients/dsh-remote/src/webrtc.js').then(m=>m.stunProbe('<RELAY_HOST>',3478).then(r=>console.log('STUN OK',r)))"
 
 # 2) TURN 分配(容器内自带 turnutils_uclient):
-docker exec dsh-turn turnutils_uclient -T -u "<ts>:<user>" -w "<password>" 124.156.222.99
+docker exec dsh-turn turnutils_uclient -T -u "<ts>:<user>" -w "<password>" <RELAY_HOST>
 
 # 3) 端口可达性(本机):
-nc -z -u 124.156.222.99 3478 && echo "udp3478 ok"
+nc -z -u <RELAY_HOST> 3478 && echo "udp3478 ok"
 ```
 
 ---

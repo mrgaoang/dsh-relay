@@ -1,6 +1,6 @@
 {
   "name": "dsh-relay",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "P2P relay: signaling + STUN + WebRTC hole punching for dsh-remote cloud",
   "type": "module",
   "private": true,
@@ -9,7 +9,12 @@
     "clients/*"
   ],
   "scripts": {
-    "relay": "node packages/relay-core/src/index.js"
+    "relay": "node packages/relay-core/src/index.js",
+    "free": "node packages/relay-free/src/index.js",
+    "test": "npm run test:core && npm run test:free",
+    "test:core": "node --test packages/relay-core/test/server.test.js",
+    "test:free": "node --test packages/relay-free/test/auth.test.js",
+    "check": "node --check packages/relay-core/src/server.js && node --check packages/relay-free/src/index.js && node --check packages/relay-free/src/auth.js && node --check packages/relay-free/src/api.js && node --check install-client.mjs"
   },
   "license": "PolyForm-Noncommercial-1.0.0",
   "dependencies": {
